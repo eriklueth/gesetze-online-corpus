@@ -2,25 +2,34 @@
 import json
 from pathlib import Path
 
+NORMALIZED_DIR = Path("normalized")
+MARKDOWN_DIR = Path("markdown")
 
-def main() -> int:
-    src = Path("normalized/example-law.json")
-    if not src.exists():
-        raise SystemExit("normalized/example-law.json not found")
 
-    data = json.loads(src.read_text())
+def render(data: dict) -> str:
     lines = [f"# {data['title']}", ""]
     for section in data.get("sections", []):
-        lines.append(f"## § {section['number']} {section.get('heading', '')}".strip())
+        label = section.get('number', '')
+        heading = section.get('heading', '') or ''
+        lines.append(f"## § {label} {heading}".strip())
         lines.append("")
         for item in section.get("content", []):
             lines.append(f"({item['absatz']}) {item['text']}")
             lines.append("")
+    return "\n".join(lines).strip() + "\n"
 
-    out = Path("markdown/example-law.md")
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text("\n".join(lines).strip() + "\n")
-    print(out)
+
+def main() -> int:
+    MARKDOWN_DIR.mkdir(parents=True, exist_ok=True)
+    count = 0
+    for src in sorted(NORMALIZED_DIR.glob("*.json")):
+        data = json.loads(src.read_text())
+        out = MARKDOWN_DIR / f"{data['law_id']}.md"
+        out.write_text(render(data))
+        print(out)
+        count += 1
+    if count == 0:
+        raise SystemExit("no normalized files found")
     return 0
 
 

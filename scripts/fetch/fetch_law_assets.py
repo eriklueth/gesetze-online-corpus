@@ -5,14 +5,14 @@ import zipfile
 from io import BytesIO
 from pathlib import Path
 
-import requests
+from fetch_http import build_session
 
 TOC_PATH = Path("index/toc.json")
 RAW_DIR = Path("raw")
 
 
-def fetch_bytes(url: str) -> bytes:
-    response = requests.get(url, timeout=60, headers={"User-Agent": "gesetze-online-corpus/0.1"})
+def fetch_bytes(session, url: str) -> bytes:
+    response = session.get(url, timeout=(15, 120))
     response.raise_for_status()
     return response.content
 
@@ -33,6 +33,7 @@ def main() -> int:
 
     toc = json.loads(TOC_PATH.read_text())
     fetched = []
+    session = build_session()
 
     for item in toc.get("items", [])[: args.limit]:
         law_id = item["slug"] or "unknown-law"
@@ -48,7 +49,7 @@ def main() -> int:
         }
 
         try:
-            zip_blob = fetch_bytes(item["link"])
+            zip_blob = fetch_bytes(session, item["link"])
             (law_dir / "source.zip").write_bytes(zip_blob)
             xml_name, xml_blob = extract_primary_xml(zip_blob)
             (law_dir / "source.xml").write_bytes(xml_blob)

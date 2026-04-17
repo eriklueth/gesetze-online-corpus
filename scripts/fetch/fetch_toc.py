@@ -3,10 +3,11 @@ import json
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
-import requests
+from fetch_http import build_session
 
 TOC_URL = "https://www.gesetze-im-internet.de/gii-toc.xml"
 OUT_PATH = Path("index/toc.json")
+ERROR_PATH = Path("index/toc.error.json")
 
 
 def text(elem: ET.Element | None) -> str | None:
@@ -17,8 +18,14 @@ def text(elem: ET.Element | None) -> str | None:
 
 
 def main() -> int:
-    response = requests.get(TOC_URL, timeout=60, headers={"User-Agent": "gesetze-online-corpus/0.1"})
-    response.raise_for_status()
+    session = build_session()
+    try:
+        response = session.get(TOC_URL, timeout=(15, 120))
+        response.raise_for_status()
+    except Exception as exc:
+        ERROR_PATH.parent.mkdir(parents=True, exist_ok=True)
+        ERROR_PATH.write_text(json.dumps({"source_url": TOC_URL, "error": str(exc)}, ensure_ascii=False, indent=2))
+        raise
 
     root = ET.fromstring(response.content)
     items = []

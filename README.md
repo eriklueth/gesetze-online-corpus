@@ -14,20 +14,25 @@ Dieses Repo ist die Source of Truth für den Gesetzeskorpus.
 - `scripts/` Fetch-, Parse- und Export-Skripte
 - `.github/workflows/` Update-Pipeline
 
-## Pipeline
-1. RSS oder Änderungsfeed prüfen
-2. betroffene Gesetze identifizieren
-3. Rohdaten neu laden
-4. strukturierte Daten und Markdown erzeugen
-5. Chunks und Indizes aktualisieren
-6. nur bei echten Änderungen committen
+## MVP Status
+Aktuell ist das Repo als funktionierendes Grundgerüst angelegt:
+- RSS-Update-Check als Startpunkt
+- Platzhalter-Normalisierung
+- Markdown-Export
+- JSONL-Chunk-Export
+- tägliche GitHub Action
 
-## Geplante Formate
-- JSON pro Gesetz
-- Markdown pro Gesetz
-- JSONL für Retrieval und Embeddings
+## Quickstart
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python3 scripts/fetch/rss_updates.py
+./scripts/run_pipeline.sh
+```
 
 ## Nächste Schritte
-- Source-Mapping definieren
-- Parser für amtliche Daten bauen
-- GitHub Action für täglichen Sync anlegen
+1. amtliche Quelldaten robust laden
+2. Mapping von Feed-Einträgen auf Gesetzes-IDs aufbauen
+3. echte Parserlogik für Hierarchie, Paragraphen und Absätze ergänzen
+4. stabile kanonische IDs und Rechtsstands-Versionierung einführen

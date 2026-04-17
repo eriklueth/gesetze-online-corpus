@@ -1,0 +1,18 @@
+{
+  "law_id": "example-law",
+  "title": "Example Law",
+  "source_url": "https://www.gesetze-im-internet.de/",
+  "sections": [
+    {
+      "type": "paragraph",
+      "number": "1",
+      "heading": "Beispielnorm",
+      "content": [
+        {
+          "absatz": 1,
+          "text": "Dies ist ein Platzhalter für die spätere Parserlogik."
+        }
+      ]
+    }
+  ]
+}

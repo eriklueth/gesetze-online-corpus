@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gesetze-corpus-tools"
+version = "0.1.0"
+description = "Ingest, parse and render Bundesrecht into a versioned law corpus."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "gesetze-corpus-bot" }]
+dependencies = [
+    "requests==2.32.3",
+    "lxml==5.3.0",
+    "python-dateutil==2.9.0.post0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.3",
+]
+
+[project.scripts]
+gesetze-corpus = "gesetze_corpus.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["gesetze_corpus*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -q"

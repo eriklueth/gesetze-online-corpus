@@ -1,0 +1,79 @@
+name: daily-snapshot
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Max number of laws to process (0 = all)"
+        required: false
+        default: "0"
+
+concurrency:
+  group: daily-snapshot
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      DATA_REPO_DIR: ${{ github.workspace }}/data-repo
+    steps:
+      - name: checkout tools
+        uses: actions/checkout@v4
+        with:
+          path: tools
+
+      - name: checkout data repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.DATA_REPO_SLUG }}
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: data-repo
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: install
+        working-directory: tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: snapshot
+        working-directory: tools
+        env:
+          GESETZE_DATA_REPO: ${{ env.DATA_REPO_DIR }}
+        run: |
+          LIMIT="${{ github.event.inputs.limit }}"
+          if [ -z "$LIMIT" ] || [ "$LIMIT" = "0" ]; then
+            python -m gesetze_corpus snapshot --workers 4
+          else
+            python -m gesetze_corpus snapshot --workers 4 --limit "$LIMIT"
+          fi
+
+      - name: verify
+        working-directory: tools
+        env:
+          GESETZE_DATA_REPO: ${{ env.DATA_REPO_DIR }}
+        run: python -m gesetze_corpus verify
+
+      - name: commit and push changes
+        working-directory: data-repo
+        run: |
+          git config user.name "gesetze-corpus-bot"
+          git config user.email "bot@gesetze-corpus.local"
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "no changes to commit"
+            exit 0
+          fi
+          git add -A
+          TODAY=$(date -u +%Y-%m-%d)
+          CHANGED=$(git diff --cached --name-only | grep -E '^laws/' | awk -F/ '{print $2}' | sort -u | wc -l)
+          git commit -m "chore(sync): GII snapshot ${TODAY} (${CHANGED} laws changed)"
+          git push

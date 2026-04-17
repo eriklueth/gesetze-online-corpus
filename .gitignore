@@ -1,5 +1,15 @@
 .venv/
+venv/
 __pycache__/
-.env
 *.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.env
 .DS_Store
+*.egg-info/
+build/
+dist/
+
+# runtime state (tooling side)
+data/state/

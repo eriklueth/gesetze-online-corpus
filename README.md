@@ -1,46 +1,52 @@
-# gesetze-online-corpus
+# gesetze-online-corpus — Tools
 
-Kontinuierlich aktualisierter, strukturierter Korpus deutscher Gesetze auf Basis amtlicher Quellen.
+Tooling für den versionierten Korpus deutscher Bundesgesetze. Dieses Repo enthält **nur Code**. Die tatsächlichen Gesetzestexte liegen im separaten Daten-Repo **`gesetze-corpus-data`**.
 
-## Ziel
-Dieses Repo ist die Source of Truth für den Gesetzeskorpus.
+## Architektur
 
-## Inhalte
-- `raw/` amtliche Quelldaten
-- `normalized/` strukturierte JSON-Dateien
-- `markdown/` lesbare Markdown-Fassungen
-- `chunks/` AI-Chunks pro Gesetz, Paragraph oder Absatz
-- `index/` Indizes, Update-Logs und Mapping-Dateien
-- `scripts/` Fetch-, Parse- und Export-Skripte
-- `.github/workflows/` Update-Pipeline
+- Detaillierte Architektur: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- Daten-Schema v1: [`docs/SCHEMA.md`](docs/SCHEMA.md)
+- Canonicalization-Regeln v1: [`docs/CANONICAL.md`](docs/CANONICAL.md)
 
-## MVP Status
-Aktuell ist das Repo als erstes echtes Ingest-Grundgerüst angelegt:
-- RSS-Update-Check
-- TOC-Fetch über `gii-toc.xml`
-- Asset-Fetcher für XML oder HTML pro Gesetz
-- XML-Normalisierung entlang der echten GII-`norm`/`metadaten`/`P`-Struktur
-- Markdown-Export
-- JSONL-Chunk-Export
-- tägliche GitHub Action
+Kern-Idee: ein Commit im Daten-Repo == ein Inkrafttretensereignis. Das Tools-Repo baut aus dem amtlichen GII-XML die kanonisierte Snapshot-Struktur und (später) Event-getriebene Update-Commits im Daten-Repo.
+
+## Quellen
+
+1. **gesetze-im-internet.de** (GII) — Primärtext, XML.
+2. **recht.bund.de / NeuRIS** — geplant, Events + ELI.
+3. **buzer.de** — geplant, nur Änderungs-Metadaten, keine Textquelle.
 
 ## Quickstart
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python3 scripts/fetch/rss_updates.py
-python3 scripts/fetch/fetch_toc.py
-python3 scripts/fetch/fetch_law_assets.py --limit 20
-./scripts/run_pipeline.sh
+
+```powershell
+# Dependencies
+pip install -e ".[dev]"
+
+# Daten-Repo initialisieren (Sibling-Ordner ../gesetze-corpus-data)
+python -m gesetze_corpus init-data
+
+# Snapshot laufen lassen (klein anfangen!)
+python -m gesetze_corpus snapshot --limit 5
+
+# Idempotenz- und Parser-Tests
+pytest
 ```
 
-## Wichtiger Hinweis
-Die amtlichen XML-Strukturen sind nicht trivial. Der Parser ist jetzt deutlich näher an der echten GII-Struktur, inklusive `norm`, `metadaten`, `enbez`, `gliederungseinheit` und direkten `P`-Absätzen. Er ist aber noch nicht vollständig für Sonderfälle wie Anlagen, Tabellen, Satzebene und Fassungsvergleiche.
+## CLI
 
-## Nächste Schritte
-1. Feed-Einträge deterministisch auf Gesetzes-IDs mappen
-2. Sonderfälle wie Anlagen, Tabellen und Revisionen sauber abbilden
-3. Satzebene und Verweisgraph extrahieren
-4. Rechtsstands-Versionierung einführen
-5. Änderungsvergleiche ableiten
+```
+python -m gesetze_corpus init-data       # Daten-Repo scaffolden + git init
+python -m gesetze_corpus snapshot        # Gesamtes GII-TOC verarbeiten
+python -m gesetze_corpus snapshot --limit N   # nur erste N Gesetze
+python -m gesetze_corpus snapshot --slug bgb  # nur ein Gesetz
+python -m gesetze_corpus verify          # Idempotenz + Hashes prüfen
+```
+
+Standardpfad zum Daten-Repo: `../gesetze-corpus-data` (Sibling des Tools-Repos). Überschreibbar per `--data-repo <pfad>` oder Umgebungsvariable `GESETZE_DATA_REPO`.
+
+## Status
+
+- Phase A — Schema-Freeze: **fertig**
+- Phase B — Current Snapshot: **implementiert**, live getestet
+- Phase C — Event-getriebene Updates: **Scaffold** (Event-Schema vorhanden, Quellen noch nicht angeschlossen)
+- Phase D — Backfill 2006→heute: **nicht begonnen**

@@ -1,0 +1,22 @@
+feat: rewrite as gesetze_corpus package with two-repo data split
+
+Restructure the tools repository into a proper Python package
+(gesetze_corpus) with pinned dependencies, a CLI (python -m
+gesetze_corpus) and clean module boundaries: http, fetch, parse,
+canonical, render, ingest, events, util.
+
+Canonicalization v1 is frozen (docs/CANONICAL.md): NFC text, XML c14n2,
+sorted JSON with LF endings. The parser is reimplemented on lxml and
+fixes three bugs from the previous scripts/ pipeline (double paragraph
+sign in headings, duplicated Absatz prefix, over-aggressive norm
+filter).
+
+Laws are now emitted into a separate data repository
+(../gesetze-corpus-data) under laws/<BJNR>/{source.xml, meta.json,
+toc.json, paragraphs/, annexes/} with per-paragraph markdown files.
+The initial snapshot holds the full current state; future commits
+will carry per-effective-date changes.
+
+Adds unit tests for canonical text, canonical XML, slug padding,
+xml parser and markdown renderer, plus a CI workflow and a scaffolded
+daily-snapshot workflow that pushes to the data repo.

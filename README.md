@@ -35,11 +35,13 @@ pytest
 ## CLI
 
 ```
-python -m gesetze_corpus init-data       # Daten-Repo scaffolden + git init
-python -m gesetze_corpus snapshot        # Gesamtes GII-TOC verarbeiten
+python -m gesetze_corpus init-data            # Daten-Repo scaffolden + git init
+python -m gesetze_corpus snapshot             # Gesamtes GII-TOC verarbeiten
 python -m gesetze_corpus snapshot --limit N   # nur erste N Gesetze
 python -m gesetze_corpus snapshot --slug bgb  # nur ein Gesetz
-python -m gesetze_corpus verify          # Idempotenz + Hashes prüfen
+python -m gesetze_corpus commit-events        # Backdated Commits pro stand_datum
+python -m gesetze_corpus sync                 # snapshot + commit-events (Daily-Driver)
+python -m gesetze_corpus verify               # Idempotenz + Hashes prüfen
 ```
 
 Standardpfad zum Daten-Repo: `../gesetze-corpus-data` (Sibling des Tools-Repos). Überschreibbar per `--data-repo <pfad>` oder Umgebungsvariable `GESETZE_DATA_REPO`.
@@ -47,6 +49,7 @@ Standardpfad zum Daten-Repo: `../gesetze-corpus-data` (Sibling des Tools-Repos).
 ## Status
 
 - Phase A — Schema-Freeze: **fertig**
-- Phase B — Current Snapshot: **implementiert**, live getestet
-- Phase C — Event-getriebene Updates: **Scaffold** (Event-Schema vorhanden, Quellen noch nicht angeschlossen)
+- Phase B — Current Snapshot: **implementiert**, 6876 Gesetze live produziert
+- Phase C v1 — Event-getriebene Updates per `stand_datum`: **implementiert**
+- Phase C v2 — recht.bund.de für präzise Events: **nicht begonnen**
 - Phase D — Backfill 2006→heute: **nicht begonnen**

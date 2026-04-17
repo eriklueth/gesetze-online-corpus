@@ -1,22 +1,22 @@
-feat: rewrite as gesetze_corpus package with two-repo data split
+feat(events): phase C v1 - backdated commits grouped by stand_datum
 
-Restructure the tools repository into a proper Python package
-(gesetze_corpus) with pinned dependencies, a CLI (python -m
-gesetze_corpus) and clean module boundaries: http, fetch, parse,
-canonical, render, ingest, events, util.
+Add events/detect.py, events/commit.py and events/schema.py:
 
-Canonicalization v1 is frozen (docs/CANONICAL.md): NFC text, XML c14n2,
-sorted JSON with LF endings. The parser is reimplemented on lxml and
-fixes three bugs from the previous scripts/ pipeline (double paragraph
-sign in headings, duplicated Absatz prefix, over-aggressive norm
-filter).
+- detect_event_groups reads git status of the data repo, groups
+  modified laws by their meta.json stand_datum and falls back to
+  today when that is missing.
+- commit_event_groups writes events/<year>/<event_id>.json per group
+  and creates one git commit per group with GIT_AUTHOR_DATE and
+  GIT_COMMITTER_DATE set to <stand_datum>T00:00:00Z.
+- Remaining non-law changes (typically sources/current/gii-index.json)
+  are gathered in one bookkeeping commit with today as date.
 
-Laws are now emitted into a separate data repository
-(../gesetze-corpus-data) under laws/<BJNR>/{source.xml, meta.json,
-toc.json, paragraphs/, annexes/} with per-paragraph markdown files.
-The initial snapshot holds the full current state; future commits
-will carry per-effective-date changes.
+Add two CLI subcommands:
 
-Adds unit tests for canonical text, canonical XML, slug padding,
-xml parser and markdown renderer, plus a CI workflow and a scaffolded
-daily-snapshot workflow that pushes to the data repo.
+- commit-events: runs detect + commit on current working tree.
+- sync: convenience wrapper running snapshot and commit-events back to
+  back. This is the daily-driver used by the updated GitHub workflow.
+
+v1 approximates the effective_date with stand_datum from GII; Phase C
+v2 will plug in recht.bund.de for real per-paragraph events without
+changing the surrounding schema.

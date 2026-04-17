@@ -45,16 +45,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
 
-      - name: snapshot
+      - name: sync (snapshot + event commits)
         working-directory: tools
         env:
           GESETZE_DATA_REPO: ${{ env.DATA_REPO_DIR }}
         run: |
           LIMIT="${{ github.event.inputs.limit }}"
           if [ -z "$LIMIT" ] || [ "$LIMIT" = "0" ]; then
-            python -m gesetze_corpus snapshot --workers 4
+            python -m gesetze_corpus sync --workers 4
           else
-            python -m gesetze_corpus snapshot --workers 4 --limit "$LIMIT"
+            python -m gesetze_corpus sync --workers 4 --limit "$LIMIT"
           fi
 
       - name: verify
@@ -63,17 +63,11 @@ jobs:
           GESETZE_DATA_REPO: ${{ env.DATA_REPO_DIR }}
         run: python -m gesetze_corpus verify
 
-      - name: commit and push changes
+      - name: push data repo
         working-directory: data-repo
         run: |
-          git config user.name "gesetze-corpus-bot"
-          git config user.email "bot@gesetze-corpus.local"
-          if [ -z "$(git status --porcelain)" ]; then
-            echo "no changes to commit"
-            exit 0
+          if git log origin/main..HEAD --oneline 2>/dev/null | read -r; then
+            git push
+          else
+            echo "no new commits to push"
           fi
-          git add -A
-          TODAY=$(date -u +%Y-%m-%d)
-          CHANGED=$(git diff --cached --name-only | grep -E '^laws/' | awk -F/ '{print $2}' | sort -u | wc -l)
-          git commit -m "chore(sync): GII snapshot ${TODAY} (${CHANGED} laws changed)"
-          git push

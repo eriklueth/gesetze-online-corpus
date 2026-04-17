@@ -36,15 +36,19 @@ Die Text-Wahrheit kommt **immer** aus GII / recht.bund.de. Buzer liefert nur Eve
 5. Schreiben ins Daten-Repo unter `laws/<BJNR>/…`.
 6. `sources/current/gii-index.json` mit Hash aller Quell-XMLs aktualisieren.
 
-### Phase C — Live-Updates (Scaffold)
+### Phase C — Event-getriebene Updates (v1 implementiert)
 
-Tägliche GitHub-Action:
+Tägliche GitHub-Action ruft `python -m gesetze_corpus sync` auf. `sync` macht in einem Rutsch:
 
-1. Snapshot laufen lassen (nur neue/geänderte Gesetze werden neu gerendert — erkannt über `sha256(source.xml)` in `sources/current/gii-index.json`).
-2. Ein (zukünftiges) `detect-events` liest `recht.bund.de` / Buzer und gruppiert Änderungen nach `effective_date`.
-3. Pro Event ein Commit ins Daten-Repo mit `GIT_AUTHOR_DATE = effective_date`.
+1. **Snapshot**: ändert per sha256-Delta nur tatsächlich geänderte Gesetze.
+2. **Detect**: liest `git status` des Daten-Repos, gruppiert geänderte Gesetze nach deren `stand_datum` (aus `meta.json`).
+3. **Commit**: pro Gruppe ein backdated Commit mit `GIT_AUTHOR_DATE = <stand_datum>T00:00:00Z` und einem `events/<jahr>/<event_id>.json`-Manifest. Am Ende ein separater Bookkeeping-Commit mit heutigem Datum für `sources/current/gii-index.json`.
 
-In der aktuellen Implementierung ist (1) vorhanden, (2) und (3) sind als `events/`-Schema und Writer-Funktion vorbereitet, aber die Event-Quelle ist noch nicht angeschlossen. Bis dahin erzeugt der Tageslauf höchstens einen generischen `chore(sync): GII snapshot YYYY-MM-DD`-Commit.
+**Bewusste Approximation in v1**: `stand_datum` ist das im Gesamtgesetz dokumentierte letzte Änderungsdatum, **nicht** pro Paragraph. Ein Mantelgesetz, das § 5 eines Gesetzes zum 01.01. und § 7 zum 01.07. ändert, bekommt im GII meistens nur *ein* Datum im `standangabe`-Block. Wir approximieren das letzte Änderungsdatum, nicht jedes Inkrafttretensereignis. Für das Alltagsdiffing und für "seit wann steht das ungefähr so im Gesetzbuch?" ist das gut genug.
+
+### Phase C v2 — recht.bund.de (geplant, nicht implementiert)
+
+Löst die v1-Approximation auf: `recht.bund.de` liefert echte Verkündungsereignisse mit ELI, BGBl-Fundstelle und ggf. pro-Paragraph-Inkrafttretensdaten. Ersetzt in `events/detect.py` die `stand_datum`-Heuristik durch den API-Abruf, ohne das restliche Schema zu ändern.
 
 ### Phase D — Backfill 2006→heute (nicht implementiert)
 

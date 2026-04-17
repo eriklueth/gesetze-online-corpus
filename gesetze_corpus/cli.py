@@ -10,6 +10,7 @@ from pathlib import Path
 
 from . import SCHEMA_VERSION
 from .canonical import canonicalize_json_dump, canonicalize_xml_bytes
+from .events import commit_event_groups, detect_event_groups
 from .ingest.snapshot import snapshot, iter_laws
 from .util.paths import resolve_data_repo, ensure_dir
 
@@ -148,6 +149,79 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
     return 0 if report.failed == 0 else 1
 
 
+def cmd_commit_events(args: argparse.Namespace) -> int:
+    data_repo = resolve_data_repo(args.data_repo)
+    groups = detect_event_groups(data_repo)
+    if not groups:
+        print("no event groups detected (working tree clean or only bookkeeping)")
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=data_repo,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        if status and not args.skip_bookkeeping:
+            committed_b = commit_event_groups(
+                data_repo,
+                groups=[],
+                author_name=args.author_name,
+                author_email=args.author_email,
+                bookkeeping_message=args.bookkeeping_message,
+            )[1]
+            print(f"bookkeeping commits: {committed_b}")
+        return 0
+    event_commits, bookkeeping_commits = commit_event_groups(
+        data_repo,
+        groups,
+        author_name=args.author_name,
+        author_email=args.author_email,
+        bookkeeping_message=args.bookkeeping_message,
+    )
+    print(
+        f"commit-events: event_commits={event_commits} "
+        f"bookkeeping_commits={bookkeeping_commits} "
+        f"groups={len(groups)}"
+    )
+    return 0
+
+
+def cmd_sync(args: argparse.Namespace) -> int:
+    data_repo = resolve_data_repo(args.data_repo)
+    if not (data_repo / "sources").exists():
+        print(
+            "data repo not initialized. run: python -m gesetze_corpus init-data",
+            file=sys.stderr,
+        )
+        return 2
+    report = snapshot(
+        data_repo,
+        limit=args.limit,
+        only_slug=args.slug,
+        workers=args.workers,
+    )
+    print(
+        f"snapshot: total={report.total} fetched={report.fetched} "
+        f"written={report.written} unchanged={report.unchanged} failed={report.failed}"
+    )
+    if report.failed and not args.ignore_errors:
+        return 1
+
+    groups = detect_event_groups(data_repo)
+    event_commits, bookkeeping_commits = commit_event_groups(
+        data_repo,
+        groups,
+        author_name=args.author_name,
+        author_email=args.author_email,
+        bookkeeping_message=f"chore(sync): GII snapshot index update",
+    )
+    print(
+        f"sync: event_commits={event_commits} "
+        f"bookkeeping_commits={bookkeeping_commits} "
+        f"groups={len(groups)}"
+    )
+    return 0
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     data_repo = resolve_data_repo(args.data_repo)
     issues = 0
@@ -195,6 +269,29 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_verify = sub.add_parser("verify", help="check canonical form and hashes")
     p_verify.set_defaults(func=cmd_verify)
+
+    p_commit = sub.add_parser(
+        "commit-events",
+        help="group changes in data repo by stand_datum and create backdated commits",
+    )
+    p_commit.add_argument("--author-name", default="gesetze-corpus-bot")
+    p_commit.add_argument("--author-email", default="bot@gesetze-corpus.local")
+    p_commit.add_argument(
+        "--bookkeeping-message", default="chore(sync): update index"
+    )
+    p_commit.add_argument("--skip-bookkeeping", action="store_true")
+    p_commit.set_defaults(func=cmd_commit_events)
+
+    p_sync = sub.add_parser(
+        "sync", help="snapshot + commit-events in one command (daily driver)"
+    )
+    p_sync.add_argument("--limit", type=int, default=None)
+    p_sync.add_argument("--slug", default=None)
+    p_sync.add_argument("--workers", type=int, default=4)
+    p_sync.add_argument("--author-name", default="gesetze-corpus-bot")
+    p_sync.add_argument("--author-email", default="bot@gesetze-corpus.local")
+    p_sync.add_argument("--ignore-errors", action="store_true")
+    p_sync.set_defaults(func=cmd_sync)
 
     return parser
 

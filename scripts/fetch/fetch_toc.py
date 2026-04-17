@@ -9,44 +9,11 @@ TOC_URL = "https://www.gesetze-im-internet.de/gii-toc.xml"
 OUT_PATH = Path("index/toc.json")
 
 
-def strip_ns(tag: str) -> str:
-    return tag.split('}', 1)[-1]
-
-
-def text_or_none(value: str | None) -> str | None:
-    if value is None:
+def text(elem: ET.Element | None) -> str | None:
+    if elem is None or elem.text is None:
         return None
-    value = value.strip()
+    value = elem.text.strip()
     return value or None
-
-
-def element_to_dict(elem: ET.Element) -> dict:
-    data = {f"@{strip_ns(k)}": v for k, v in elem.attrib.items()}
-    text = text_or_none(elem.text)
-    if text:
-        data["#text"] = text
-    for child in list(elem):
-        key = strip_ns(child.tag)
-        child_data = element_to_dict(child)
-        if key in data:
-            if not isinstance(data[key], list):
-                data[key] = [data[key]]
-            data[key].append(child_data)
-        else:
-            data[key] = child_data
-    return data
-
-
-def collect_laws(root: ET.Element) -> list[dict]:
-    laws: list[dict] = []
-    for elem in root.iter():
-        payload = element_to_dict(elem)
-        payload["_tag"] = strip_ns(elem.tag)
-        flat_values = " ".join(str(v) for v in payload.values() if isinstance(v, str)).lower()
-        attrs = {k: v for k, v in payload.items() if k.startswith("@") and isinstance(v, str)}
-        if any(keyword in flat_values for keyword in ["xml", "html", "titel", "title", "jurabk"]) or attrs:
-            laws.append(payload)
-    return laws
 
 
 def main() -> int:
@@ -54,12 +21,26 @@ def main() -> int:
     response.raise_for_status()
 
     root = ET.fromstring(response.content)
+    items = []
+    for item in root.findall(".//item"):
+        title = text(item.find("title"))
+        link = text(item.find("link"))
+        description = text(item.find("description"))
+        if not title or not link:
+            continue
+        slug = link.removeprefix("https://www.gesetze-im-internet.de/").removesuffix("/xml.zip").strip("/")
+        items.append({
+            "title": title,
+            "link": link,
+            "description": description,
+            "slug": slug,
+        })
+
     payload = {
         "source_url": TOC_URL,
-        "count": 0,
-        "items": collect_laws(root),
+        "count": len(items),
+        "items": items,
     }
-    payload["count"] = len(payload["items"])
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2))

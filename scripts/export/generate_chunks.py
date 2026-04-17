@@ -17,10 +17,12 @@ def main() -> int:
         for section in data.get("sections", []):
             for item in section.get("content", []):
                 records.append({
-                    "chunk_id": f"{data['law_id']}:p{section.get('number', 'x')}:a{item['absatz']}",
+                    "chunk_id": f"{data.get('canonical_id', data['law_id'])}:{section.get('number', 'x')}:a{item['absatz']}",
                     "law_id": data["law_id"],
+                    "canonical_law_id": data.get("canonical_id"),
                     "law_title": data["title"],
                     "paragraph_number": section.get("number"),
+                    "section_canonical_id": section.get("canonical_id"),
                     "absatz": item["absatz"],
                     "text": item["text"],
                     "source_url": data.get("source_url"),

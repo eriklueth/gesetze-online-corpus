@@ -138,6 +138,7 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
         limit=args.limit,
         only_slug=args.slug,
         workers=args.workers,
+        force_rerender=args.force_rerender,
     )
     print(
         f"snapshot: total={report.total} fetched={report.fetched} "
@@ -198,6 +199,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
         limit=args.limit,
         only_slug=args.slug,
         workers=args.workers,
+        force_rerender=args.force_rerender,
     )
     print(
         f"snapshot: total={report.total} fetched={report.fetched} "
@@ -206,13 +208,26 @@ def cmd_sync(args: argparse.Namespace) -> int:
     if report.failed and not args.ignore_errors:
         return 1
 
-    groups = detect_event_groups(data_repo)
+    # When the user forced a full re-render (e.g. after a parser/renderer
+    # fix), the file changes are NOT real gesetzliche events - they are
+    # cosmetic. Bundle everything into a single chore commit instead of
+    # producing thousands of backdated "law(...): stand ..." commits.
+    if args.force_rerender:
+        groups = []
+        bookkeeping_msg = (
+            args.rerender_message
+            or "chore(render): re-render all laws after parser/renderer update"
+        )
+    else:
+        groups = detect_event_groups(data_repo)
+        bookkeeping_msg = "chore(sync): GII snapshot index update"
+
     event_commits, bookkeeping_commits = commit_event_groups(
         data_repo,
         groups,
         author_name=args.author_name,
         author_email=args.author_email,
-        bookkeeping_message=f"chore(sync): GII snapshot index update",
+        bookkeeping_message=bookkeeping_msg,
     )
     print(
         f"sync: event_commits={event_commits} "
@@ -265,6 +280,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_snap.add_argument("--limit", type=int, default=None)
     p_snap.add_argument("--slug", default=None, help="only one law by GII slug")
     p_snap.add_argument("--workers", type=int, default=4)
+    p_snap.add_argument(
+        "--force-rerender",
+        action="store_true",
+        help="ignore source-XML-hash cache and re-render every law (use after parser/renderer fixes)",
+    )
     p_snap.set_defaults(func=cmd_snapshot)
 
     p_verify = sub.add_parser("verify", help="check canonical form and hashes")
@@ -291,6 +311,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_sync.add_argument("--author-name", default="gesetze-corpus-bot")
     p_sync.add_argument("--author-email", default="bot@gesetze-corpus.local")
     p_sync.add_argument("--ignore-errors", action="store_true")
+    p_sync.add_argument(
+        "--force-rerender",
+        action="store_true",
+        help="ignore source-XML-hash cache, re-render everything, and bundle "
+        "the result into a single chore(render) commit (no backdated events)",
+    )
+    p_sync.add_argument(
+        "--rerender-message",
+        default=None,
+        help="commit message when --force-rerender is set",
+    )
     p_sync.set_defaults(func=cmd_sync)
 
     return parser

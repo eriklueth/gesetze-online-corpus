@@ -90,10 +90,12 @@ def _collect_paragraph_text(text_elem: etree._Element) -> list[ParsedAbsatz]:
     numbered_mode = False
 
     for p in content.findall("P"):
-        for sup in p.findall(".//SUP"):
-            parent = sup.getparent()
-            if parent is not None:
-                parent.remove(sup)
+        # SUP elements in GII XML carry the Satznummerierung ("1", "2", ...).
+        # We drop them entirely (both tag and its text content) but MUST
+        # preserve the tail text that follows a SUP inside its parent -
+        # otherwise every sentence after the first one is lost. Using
+        # `strip_elements(..., with_tail=False)` does exactly that.
+        etree.strip_elements(p, "SUP", with_tail=False)
         raw = canonicalize_paragraph("".join(p.itertext()))
         if not raw:
             continue

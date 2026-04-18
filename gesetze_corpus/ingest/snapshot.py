@@ -41,6 +41,7 @@ def _process_one(
     entry: TocEntry,
     data_repo: Path,
     previous_index: dict,
+    force_rerender: bool = False,
 ) -> tuple[str, dict, bool, bool]:
     """Fetch, canonicalize, parse and render one law.
 
@@ -52,7 +53,7 @@ def _process_one(
     sha = hashlib.sha256(canonical_xml).hexdigest()
 
     prev = previous_index.get(entry.slug) or {}
-    unchanged = prev.get("source_xml_sha256") == sha
+    unchanged = prev.get("source_xml_sha256") == sha and not force_rerender
     bjnr = asset.bjnr
 
     now_iso = (
@@ -156,6 +157,7 @@ def snapshot(
     limit: int | None = None,
     only_slug: str | None = None,
     workers: int = 4,
+    force_rerender: bool = False,
 ) -> SnapshotReport:
     session = build_session()
     entries = fetch_toc(session)
@@ -180,7 +182,9 @@ def snapshot(
 
     def work(entry: TocEntry) -> tuple[str, dict, bool, bool] | None:
         try:
-            return _process_one(entry, data_repo, previous)
+            return _process_one(
+                entry, data_repo, previous, force_rerender=force_rerender
+            )
         except Exception as exc:
             log.warning("failed %s: %s", entry.slug, exc)
             return (entry.slug, {}, False, False, str(exc))  # type: ignore[return-value]

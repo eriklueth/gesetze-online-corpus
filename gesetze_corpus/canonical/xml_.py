@@ -20,7 +20,7 @@ def canonicalize_xml_bytes(raw: bytes) -> bytes:
         no_network=True,
     )
     root = etree.fromstring(raw, parser=parser)
-    canon = etree.tostring(
+    canon = etree.tostring(  # type: ignore[call-overload]
         root,
         method="c14n2",
         with_comments=False,

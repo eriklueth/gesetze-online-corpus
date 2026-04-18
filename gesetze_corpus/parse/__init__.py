@@ -1,13 +1,15 @@
 from .xml_parser import (
-    ParsedLaw,
-    ParsedSection,
     ParsedAbsatz,
+    ParsedLaw,
+    ParsedSatz,
+    ParsedSection,
     parse_law_xml,
 )
 
 __all__ = [
-    "ParsedLaw",
-    "ParsedSection",
     "ParsedAbsatz",
+    "ParsedLaw",
+    "ParsedSatz",
+    "ParsedSection",
     "parse_law_xml",
 ]

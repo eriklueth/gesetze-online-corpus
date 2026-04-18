@@ -19,6 +19,7 @@ param(
     [string]$DataRepo  = "C:\Projekte\gesetze-corpus-data",
     [string]$LogDir    = "C:\Projekte\gesetze-online-corpus\logs",
     [int]   $Workers   = 4,
+    [int]   $KeepLogs  = 30,
     [switch]$SkipPush
 )
 
@@ -60,4 +61,16 @@ Log "pushing $aheadCount commits to origin/main"
 if ($LASTEXITCODE -ne 0) { Log "push failed (exit=$LASTEXITCODE)"; exit 3 }
 
 Log "=== sync-local done ==="
+
+# Rotate logs: keep only the most recent $KeepLogs sync-*.log files.
+# Runs on success only - failed runs leave all logs in place for forensics.
+try {
+    Get-ChildItem $LogDir -Filter "sync-*.log" -File |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -Skip $KeepLogs |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+} catch {
+    Log "log rotation failed (non-fatal): $($_.Exception.Message)"
+}
+
 exit 0

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gesetze-corpus-tools"
-version = "0.1.0"
+version = "0.2.0"
 description = "Ingest, parse and render Bundesrecht into a versioned law corpus."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -19,6 +19,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest==8.3.3",
+    "ruff==0.9.1",
+    "pyright==1.1.392",
+    "lxml-stubs==0.5.1",
 ]
 
 [project.scripts]
@@ -31,3 +34,23 @@ include = ["gesetze_corpus*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra -q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = [".venv", "build", "dist", "logs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = [
+    "E501",
+    "B008",
+    "SIM108",
+]
+
+[tool.pyright]
+include = ["gesetze_corpus", "tests"]
+pythonVersion = "3.11"
+typeCheckingMode = "basic"
+reportMissingTypeStubs = false
+reportPrivateImportUsage = false

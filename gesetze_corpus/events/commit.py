@@ -71,7 +71,7 @@ def _commit_message(group: DetectedEventGroup) -> str:
             f"BJNR: {law.bjnr}\n"
             f"tooling: {TOOLING_ID}\n"
         )
-    handles = ", ".join((l.jurabk or l.bjnr) for l in group.laws[:5])
+    handles = ", ".join((law.jurabk or law.bjnr) for law in group.laws[:5])
     if len(group.laws) > 5:
         handles += f", +{len(group.laws) - 5} more"
     return (
@@ -98,6 +98,9 @@ def commit_event_groups(
                     "bjnr": law.bjnr,
                     "changed_paths": law.changed_paths,
                     "jurabk": law.jurabk,
+                    "sections_added": law.sections_added,
+                    "sections_modified": law.sections_modified,
+                    "sections_removed": law.sections_removed,
                     "source_xml_sha256_after": law.source_xml_sha256_after,
                     "source_xml_sha256_before": law.source_xml_sha256_before,
                     "stand_datum": law.stand_datum,
@@ -110,7 +113,7 @@ def commit_event_groups(
                 "method": "gii-xml-sha256",
                 "notes": (
                     "effective_date derived from meta.json stand_datum; "
-                    "not a per-paragraph event"
+                    "per-section A/M/D derived from git working tree"
                 ),
             },
         }

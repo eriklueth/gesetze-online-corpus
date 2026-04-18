@@ -2,7 +2,6 @@ from textwrap import dedent
 
 from gesetze_corpus.parse import parse_law_xml
 
-
 SAMPLE = dedent(
     """\
     <?xml version="1.0" encoding="utf-8"?>
@@ -65,13 +64,20 @@ def test_parses_paragraph_and_strips_absatz_prefix():
     p = [s for s in law.sections if s.kind == "paragraph"]
     assert len(p) == 1
     sec = p[0]
-    assert sec.number == "§ 1"
+    assert sec.number == "\u00a7 1"
     assert sec.heading == "Begriffsbestimmung"
     assert len(sec.absaetze) == 2
-    assert sec.absaetze[0].absatz == "1"
-    assert sec.absaetze[0].text == "Alpha."
-    assert sec.absaetze[1].absatz == "2"
-    assert sec.absaetze[1].text == "Beta."
+
+    a1 = sec.absaetze[0]
+    assert a1.absatz == "1"
+    assert a1.intro == ""
+    assert len(a1.saetze) == 1
+    assert a1.saetze[0].nummer == 1
+    assert a1.saetze[0].text == "Alpha."
+
+    a2 = sec.absaetze[1]
+    assert a2.absatz == "2"
+    assert a2.saetze[0].text == "Beta."
 
 
 def test_parses_annex_with_implicit_absatz_id():
@@ -81,7 +87,7 @@ def test_parses_annex_with_implicit_absatz_id():
     sec = a[0]
     assert sec.number == "Anlage 1"
     assert sec.absaetze[0].absatz == "1"
-    assert sec.absaetze[0].text == "Ein unnummerierter Absatz."
+    assert sec.absaetze[0].saetze[0].text == "Ein unnummerierter Absatz."
 
 
 SUP_TAIL_SAMPLE = dedent(
@@ -103,7 +109,7 @@ SUP_TAIL_SAMPLE = dedent(
         <textdaten>
           <text format="XML">
             <Content>
-              <P>(1) <SUP class="Rec">1</SUP>Steuerpflichtige k\u00f6nnen abziehen. <SUP class="Rec">2</SUP>Voraussetzung ist, wenn <DL><DT>1.</DT><DD>der Gewinn ermittelt wird;</DD></DL></P>
+              <P>(1) <SUP class="Rec">1</SUP>Steuerpflichtige k\u00f6nnen abziehen. <SUP class="Rec">2</SUP>Voraussetzung ist, wenn <DL Type="arabic"><DT>1.</DT><DD>der Gewinn ermittelt wird;</DD><DT>2.</DT><DD>das Wirtschaftsgut genutzt wird.</DD></DL></P>
               <P>(2) <SUP class="Rec">1</SUP>Weiter. <SUP class="Rec">2</SUP>Schluss.</P>
               <P>(3) (weggefallen)</P>
               <P>(4) <SUP class="Rec">1</SUP>Wird das Wirtschaftsgut nicht genutzt, ist der Abzug r\u00fcckg\u00e4ngig zu machen.</P>
@@ -116,37 +122,70 @@ SUP_TAIL_SAMPLE = dedent(
 ).encode("utf-8")
 
 
-def test_sup_removal_preserves_tail_text():
-    """Regression: lxml's Element.remove() also drops the element's tail.
-
-    The GII XML carries per-Satz markers like ``<SUP>1</SUP>`` inside
-    each ``<P>`` Absatz. If we delete SUPs naively, every sentence
-    following a SUP is lost - at best we keep text inside trailing
-    ``<DL>`` blocks, at worst the entire Absatz goes blank. Before the
-    fix, paragraphs like EStG \u00a7 7g (1)-(4) rendered as empty.
-    """
+def test_sup_splits_into_structured_saetze():
     law = parse_law_xml(SUP_TAIL_SAMPLE, bjnr="BJNRTEST007")
-    paragraphs = [s for s in law.sections if s.kind == "paragraph"]
-    assert len(paragraphs) == 1
-    sec = paragraphs[0]
-    assert sec.number == "\u00a7 7g"
+    sec = [s for s in law.sections if s.kind == "paragraph"][0]
     assert len(sec.absaetze) == 4
 
     a1 = sec.absaetze[0]
     assert a1.absatz == "1"
-    assert a1.text.startswith("Steuerpflichtige k\u00f6nnen abziehen.")
-    assert "Voraussetzung ist" in a1.text
-    assert "der Gewinn ermittelt wird" in a1.text
+    assert len(a1.saetze) == 2
+    assert a1.saetze[0].nummer == 1
+    assert a1.saetze[0].text.startswith("Steuerpflichtige k\u00f6nnen")
+    assert a1.saetze[1].nummer == 2
+    assert "Voraussetzung ist" in a1.saetze[1].text
+    assert "1. der Gewinn ermittelt wird" in a1.saetze[1].text
+    assert "2. das Wirtschaftsgut genutzt wird" in a1.saetze[1].text
 
     a2 = sec.absaetze[1]
-    assert a2.absatz == "2"
-    assert "Weiter." in a2.text and "Schluss." in a2.text
+    assert [s.nummer for s in a2.saetze] == [1, 2]
+    assert a2.saetze[0].text == "Weiter."
+    assert a2.saetze[1].text == "Schluss."
 
     a3 = sec.absaetze[2]
     assert a3.absatz == "3"
-    assert a3.text == "(weggefallen)"
+    assert len(a3.saetze) == 1
+    assert a3.saetze[0].text == "(weggefallen)"
 
     a4 = sec.absaetze[3]
     assert a4.absatz == "4"
-    assert a4.text.startswith("Wird das Wirtschaftsgut")
-    assert a4.text.endswith("r\u00fcckg\u00e4ngig zu machen.")
+    assert a4.saetze[0].nummer == 1
+    assert a4.saetze[0].text.startswith("Wird das Wirtschaftsgut")
+
+
+TABLE_SAMPLE = dedent(
+    """\
+    <?xml version="1.0" encoding="utf-8"?>
+    <dokumente>
+      <norm>
+        <metadaten>
+          <jurabk>TSTG</jurabk>
+          <langue>Tabellentest</langue>
+        </metadaten>
+        <textdaten/>
+      </norm>
+      <norm>
+        <metadaten>
+          <enbez>\u00a7 2</enbez>
+          <titel>Tabelle</titel>
+        </metadaten>
+        <textdaten>
+          <text format="XML">
+            <Content>
+              <P>(1) Die Werte sind: <table><tbody><row><entry>A</entry><entry>1</entry></row><row><entry>B</entry><entry>2</entry></row></tbody></table></P>
+            </Content>
+          </text>
+        </textdaten>
+      </norm>
+    </dokumente>
+    """
+).encode("utf-8")
+
+
+def test_table_inlined_as_brackets():
+    law = parse_law_xml(TABLE_SAMPLE, bjnr="BJNRTEST002")
+    sec = [s for s in law.sections if s.kind == "paragraph"][0]
+    a = sec.absaetze[0]
+    text = a.saetze[0].text
+    assert "[A | 1; B | 2]" in text
+    assert text.startswith("Die Werte sind:")

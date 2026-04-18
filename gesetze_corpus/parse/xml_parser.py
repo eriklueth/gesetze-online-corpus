@@ -5,13 +5,28 @@ either the Stammgesetz head (holding law-level metadata), a gliederung
 header (Teil, Abschnitt, Titel, ...) which only contributes to the
 current breadcrumb stack, a paragraph (``§`` / ``Art``) or an annex
 (``Anlage``). Norms without textdaten are treated as headers.
+
+Paragraph body handling (schema v2)
+-----------------------------------
+
+Each ``<P>`` element is one *Absatz* and can contain:
+
+- a leading ``(N) `` prefix in ``p.text`` that identifies the Absatz,
+- ``<SUP class="Rec">N</SUP>`` markers that split the Absatz into
+  numbered *Saetze*,
+- inline ``<DL>``/``<table>`` block-like structures that belong to
+  the currently active Satz.
+
+We preserve the Satz segmentation in the parsed model so downstream
+tooling can index per-Satz and the Markdown renderer can emit
+``<sup>N</sup>`` markers for readability. When no SUP markers are
+present, the whole Absatz becomes a single Satz with ``nummer=1``.
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Optional
 
 from lxml import etree
 
@@ -22,9 +37,16 @@ _ABSATZ_PREFIX_RE = re.compile(r"^\s*\(\s*(\d+[a-zA-Z]?)\s*\)\s*")
 
 
 @dataclass
+class ParsedSatz:
+    nummer: int
+    text: str
+
+
+@dataclass
 class ParsedAbsatz:
     absatz: str
-    text: str
+    intro: str = ""
+    saetze: list[ParsedSatz] = field(default_factory=list)
 
 
 @dataclass
@@ -39,24 +61,29 @@ class ParsedSection:
 @dataclass
 class ParsedLaw:
     bjnr: str
-    jurabk: Optional[str]
-    amtabk: Optional[str]
+    jurabk: str | None
+    amtabk: str | None
     title: str
-    ausfertigung_datum: Optional[str]
-    stand_datum: Optional[str]
+    ausfertigung_datum: str | None
+    stand_datum: str | None
     standangabe: list[dict]
     sections: list[ParsedSection]
+
+
+def _all_text(elem: etree._Element) -> str:
+    """Concatenate all descendant text. Casts to str to satisfy lxml-stubs."""
+    return "".join(str(t) for t in elem.itertext())
 
 
 def _first_text(elem: etree._Element | None, xpath: str) -> str | None:
     if elem is None:
         return None
     nodes = elem.xpath(xpath)
-    if not nodes:
+    if not isinstance(nodes, list) or not nodes:
         return None
     node = nodes[0]
     if isinstance(node, etree._Element):
-        raw = "".join(node.itertext())
+        raw = _all_text(node)
     else:
         raw = str(node)
     return canonicalize_text(raw) or None
@@ -72,45 +99,244 @@ def _extract_standangabe(metadaten: etree._Element) -> list[dict]:
     return result
 
 
-def _collect_paragraph_text(text_elem: etree._Element) -> list[ParsedAbsatz]:
-    """Extract per-Absatz text out of a ``<text><Content>...</Content></text>`` block.
+# ---------------------------------------------------------------------------
+# Inline rendering of GII markup to Markdown
+# ---------------------------------------------------------------------------
 
-    Rule: every top-level ``<P>`` under ``<Content>`` is a candidate
-    paragraph. If it starts with ``(n)`` we treat that as an explicit
-    Absatz id and strip the prefix from the text. Otherwise we number
-    implicitly ``1``, ``2``, ... in sequence. Follow-up ``<P>`` without
-    a leading ``(n)`` within numbered mode are appended to the previous
-    Absatz with a space separator.
+
+def _render_element(elem: etree._Element) -> str:
+    """Render one XML subtree to a Markdown-ish string.
+
+    The output goes through :func:`canonicalize_paragraph` afterwards, so
+    all internal whitespace is collapsed. That means block structures have
+    to be encoded with visible punctuation rather than newlines.
+    """
+    tag = elem.tag
+    if tag == "BR":
+        return " "
+    if tag == "DL":
+        return _render_dl(elem)
+    if tag == "table":
+        return _render_table(elem)
+    if tag in ("I", "IN"):
+        return "*" + _all_text(elem) + "*"
+    if tag in ("B", "F"):
+        return "**" + _all_text(elem) + "**"
+    if tag == "SUP" and elem.get("class") == "Rec":
+        return ""
+    return _render_element_content(elem)
+
+
+def _render_element_content(elem: etree._Element) -> str:
+    """Recurse over the children of ``elem`` keeping inline text flow."""
+    parts: list[str] = []
+    if elem.text:
+        parts.append(elem.text)
+    for child in elem:
+        parts.append(_render_element(child))
+        if child.tail:
+            parts.append(child.tail)
+    return "".join(parts)
+
+
+def _render_dl(dl_elem: etree._Element) -> str:
+    """Render ``<DL><DT>m</DT><DD>body</DD>...</DL>`` as an inline list.
+
+    Since the containing Absatz is rendered as a single Markdown line,
+    we cannot emit real list items. Instead we keep the original DT
+    markers (``1.``, ``a)``, ...) with a space before the body so the
+    result reads close to the amtliche Fassung:
+
+        "wenn 1. der Gewinn a) nach § 4 ermittelt wird, b) ..."
+    """
+    pairs: list[tuple[str, etree._Element]] = []
+    current_dt: str | None = None
+    for child in dl_elem:
+        if child.tag == "DT":
+            current_dt = canonicalize_text(_all_text(child)).strip()
+        elif child.tag == "DD":
+            pairs.append((current_dt or "", child))
+            current_dt = None
+    rendered_items: list[str] = []
+    for marker, dd in pairs:
+        body = _render_element_content(dd).strip()
+        if marker and body:
+            rendered_items.append(f"{marker} {body}")
+        elif body:
+            rendered_items.append(body)
+        elif marker:
+            rendered_items.append(marker)
+    if not rendered_items:
+        return " "
+    return " " + " ".join(rendered_items) + " "
+
+
+def _render_table(table_elem: etree._Element) -> str:
+    """Render a ``<table>`` compactly inside an Absatz.
+
+    Real Markdown tables require newlines which our single-line Absatz
+    format does not allow. The compromise: ``[c1 | c2 | ...; c1 | c2 ...]``.
+    Enough for grep-style search; full-blown tables need a future block
+    renderer.
+    """
+    rows_out: list[str] = []
+    for row in table_elem.iter("row"):
+        cells: list[str] = []
+        for entry in row.findall("entry"):
+            txt = canonicalize_text(_all_text(entry)).strip()
+            cells.append(txt)
+        if any(cells):
+            rows_out.append(" | ".join(cells))
+    if not rows_out:
+        return " "
+    return " [" + "; ".join(rows_out) + "] "
+
+
+# ---------------------------------------------------------------------------
+# Absatz / Satz extraction
+# ---------------------------------------------------------------------------
+
+
+def _split_p_into_saetze(
+    p_elem: etree._Element,
+) -> tuple[str, list[ParsedSatz]]:
+    """Walk a <P> in document order and split at SUP[@class='Rec'] markers.
+
+    Returns ``(intro, saetze)``. ``intro`` is the text before the first
+    SUP marker (usually only the ``(N) `` Absatz prefix, stripped later
+    by the caller). ``saetze`` lists numbered Saetze.
+    """
+    saetze: list[ParsedSatz] = []
+    intro_parts: list[str] = []
+    current_nr: int | None = None
+    buffer: list[str] = []
+
+    def flush() -> None:
+        nonlocal buffer
+        if current_nr is not None:
+            text = canonicalize_paragraph("".join(buffer))
+            if text:
+                saetze.append(ParsedSatz(nummer=current_nr, text=text))
+        buffer = []
+
+    if p_elem.text:
+        intro_parts.append(p_elem.text)
+
+    for child in p_elem:
+        is_satz_marker = child.tag == "SUP" and child.get("class") == "Rec"
+        if is_satz_marker:
+            if current_nr is not None:
+                flush()
+            try:
+                current_nr = int((child.text or "").strip())
+            except ValueError:
+                current_nr = (current_nr or 0) + 1
+            if child.tail:
+                buffer.append(child.tail)
+        else:
+            rendered = _render_element(child)
+            if current_nr is None:
+                intro_parts.append(rendered)
+                if child.tail:
+                    intro_parts.append(child.tail)
+            else:
+                buffer.append(rendered)
+                if child.tail:
+                    buffer.append(child.tail)
+
+    flush()
+    intro = canonicalize_paragraph("".join(intro_parts))
+    return intro, saetze
+
+
+def _render_whole_p(p_elem: etree._Element) -> str:
+    """Render the full <P> content as a single canonicalized line."""
+    return canonicalize_paragraph(_render_element_content(p_elem))
+
+
+def _collect_paragraph_absaetze(
+    text_elem: etree._Element,
+) -> list[ParsedAbsatz]:
+    """Extract structured Absaetze out of a <text><Content>...</Content>.
+
+    Rule:
+    - Each top-level ``<P>`` is a candidate Absatz.
+    - Absatz id is detected from the leading ``(N) `` prefix; otherwise
+      we number implicitly ``1``, ``2``, ...
+    - Inside a ``<P>`` with SUP[@class='Rec'] markers, the Absatz is
+      split into Saetze. Otherwise the whole Absatz is one Satz with
+      ``nummer=1``.
+    - An unnumbered follow-up ``<P>`` in numbered mode appends its
+      Saetze to the previous Absatz (continuing the Satz numbering).
     """
     content = text_elem.find("Content")
     if content is None:
         content = text_elem
     absaetze: list[ParsedAbsatz] = []
-    seq = 0
+    implicit_seq = 0
     numbered_mode = False
 
     for p in content.findall("P"):
-        # SUP elements in GII XML carry the Satznummerierung ("1", "2", ...).
-        # We drop them entirely (both tag and its text content) but MUST
-        # preserve the tail text that follows a SUP inside its parent -
-        # otherwise every sentence after the first one is lost. Using
-        # `strip_elements(..., with_tail=False)` does exactly that.
-        etree.strip_elements(p, "SUP", with_tail=False)
-        raw = canonicalize_paragraph("".join(p.itertext()))
-        if not raw:
+        has_markers = any(
+            (s.tag == "SUP" and s.get("class") == "Rec") for s in p.iter("SUP")
+        )
+
+        if has_markers:
+            intro, saetze = _split_p_into_saetze(p)
+        else:
+            whole = _render_whole_p(p)
+            intro = ""
+            saetze = [ParsedSatz(nummer=1, text=whole)] if whole else []
+
+        if not intro and not saetze:
             continue
-        seq += 1
-        m = _ABSATZ_PREFIX_RE.match(raw)
+
+        full_head = intro or (saetze[0].text if saetze else "")
+        m = _ABSATZ_PREFIX_RE.match(full_head)
         if m:
             numbered_mode = True
-            body = canonicalize_paragraph(raw[m.end():])
-            absaetze.append(ParsedAbsatz(absatz=m.group(1), text=body))
+            absatz_id = m.group(1)
+            prefix_len = m.end()
+            if intro:
+                intro = intro[prefix_len:].lstrip()
+            elif saetze:
+                stripped = saetze[0].text[prefix_len:].lstrip()
+                saetze[0] = ParsedSatz(nummer=saetze[0].nummer, text=stripped)
+            absaetze.append(
+                ParsedAbsatz(absatz=absatz_id, intro=intro, saetze=saetze)
+            )
         elif numbered_mode and absaetze:
-            absaetze[-1].text = canonicalize_paragraph(absaetze[-1].text + " " + raw)
+            prev = absaetze[-1]
+            last_nr = prev.saetze[-1].nummer if prev.saetze else 0
+            if intro:
+                if prev.saetze:
+                    prev.saetze[-1] = ParsedSatz(
+                        nummer=prev.saetze[-1].nummer,
+                        text=canonicalize_paragraph(
+                            prev.saetze[-1].text + " " + intro
+                        ),
+                    )
+                else:
+                    prev.intro = canonicalize_paragraph(
+                        (prev.intro + " " + intro).strip()
+                    )
+            for s in saetze:
+                last_nr = max(last_nr + 1, s.nummer)
+                prev.saetze.append(ParsedSatz(nummer=last_nr, text=s.text))
         else:
-            absaetze.append(ParsedAbsatz(absatz=str(seq), text=raw))
+            implicit_seq += 1
+            absaetze.append(
+                ParsedAbsatz(
+                    absatz=str(implicit_seq), intro=intro, saetze=saetze
+                )
+            )
 
     return absaetze
+
+
+# ---------------------------------------------------------------------------
+# Public entry point
+# ---------------------------------------------------------------------------
 
 
 def parse_law_xml(xml_bytes: bytes, bjnr: str) -> ParsedLaw:
@@ -137,7 +363,7 @@ def parse_law_xml(xml_bytes: bytes, bjnr: str) -> ParsedLaw:
 
     stand_datum: str | None = None
     for st in standangabe:
-        k = (st.get("kommentar") or "")
+        k = st.get("kommentar") or ""
         m = re.search(r"(\d{1,2}\.\d{1,2}\.(\d{2,4}))", k)
         if m:
             stand_datum = _normalize_german_date(m.group(1))
@@ -162,7 +388,9 @@ def parse_law_xml(xml_bytes: bytes, bjnr: str) -> ParsedLaw:
             titel_gl = _first_text(gliederung, "gliederungstitel/text()")
             label_parts = [p for p in [bez, titel_gl] if p]
             if label_parts:
-                depth_raw = _first_text(gliederung, "gliederungskennzahl/text()")
+                depth_raw = _first_text(
+                    gliederung, "gliederungskennzahl/text()"
+                )
                 depth = _depth_from_kennzahl(depth_raw)
                 if depth is not None:
                     breadcrumb = breadcrumb[:depth]
@@ -178,7 +406,7 @@ def parse_law_xml(xml_bytes: bytes, bjnr: str) -> ParsedLaw:
         if text_elem is None:
             absaetze: list[ParsedAbsatz] = []
         else:
-            absaetze = _collect_paragraph_text(text_elem)
+            absaetze = _collect_paragraph_absaetze(text_elem)
 
         sections.append(
             ParsedSection(

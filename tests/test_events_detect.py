@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from gesetze_corpus.canonical import canonicalize_json_dump
-from gesetze_corpus.events import detect_event_groups, commit_event_groups
+from gesetze_corpus.events import commit_event_groups, detect_event_groups
 
 
 def _git(repo: Path, *args: str) -> str:

@@ -1,16 +1,22 @@
-from gesetze_corpus.parse import ParsedAbsatz, ParsedSection
+from gesetze_corpus.parse import ParsedAbsatz, ParsedSatz, ParsedSection
 from gesetze_corpus.render import render_section_markdown
+
+
+def _absatz(absatz: str, text: str) -> ParsedAbsatz:
+    return ParsedAbsatz(
+        absatz=absatz, intro="", saetze=[ParsedSatz(nummer=1, text=text)]
+    )
 
 
 def _sample_section() -> ParsedSection:
     return ParsedSection(
         kind="paragraph",
-        number="§ 14a",
+        number="\u00a7 14a",
         heading="Begriffsbestimmung",
         breadcrumb=["Buch 1", "Abschnitt 3"],
         absaetze=[
-            ParsedAbsatz(absatz="1", text="Erster Absatz."),
-            ParsedAbsatz(absatz="2", text="Zweiter Absatz."),
+            _absatz("1", "Erster Absatz."),
+            _absatz("2", "Zweiter Absatz."),
         ],
     )
 
@@ -53,3 +59,31 @@ def test_absatz_prefix_not_duplicated():
     )
     assert "(1) Erster Absatz." in md
     assert "(1) (1)" not in md
+
+
+def test_numbered_saetze_render_with_sup_markers():
+    section = ParsedSection(
+        kind="paragraph",
+        number="\u00a7 1",
+        heading="",
+        breadcrumb=[],
+        absaetze=[
+            ParsedAbsatz(
+                absatz="1",
+                intro="",
+                saetze=[
+                    ParsedSatz(nummer=1, text="Erster Satz."),
+                    ParsedSatz(nummer=2, text="Zweiter Satz."),
+                ],
+            )
+        ],
+    )
+    md = render_section_markdown(
+        schema_version="v2",
+        bjnr="BJNRTEST001",
+        jurabk="TESTG",
+        section=section,
+        stand_datum="2026-01-01",
+    )
+    assert "(1) <sup>1</sup>Erster Satz. <sup>2</sup>Zweiter Satz." in md
+    assert "<sup>1</sup><sup>2</sup>" not in md

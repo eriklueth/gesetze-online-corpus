@@ -12,6 +12,9 @@ class AffectedLaw:
     source_xml_sha256_before: str | None
     source_xml_sha256_after: str
     changed_paths: list[str] = field(default_factory=list)
+    sections_added: list[str] = field(default_factory=list)
+    sections_modified: list[str] = field(default_factory=list)
+    sections_removed: list[str] = field(default_factory=list)
 
 
 @dataclass

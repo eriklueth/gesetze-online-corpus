@@ -3,15 +3,15 @@ from __future__ import annotations
 import hashlib
 import logging
 import shutil
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterable
 
 from .. import SCHEMA_VERSION
 from ..canonical import canonicalize_json_dump, canonicalize_xml_bytes
-from ..fetch import fetch_law_xml, fetch_toc, TocEntry
+from ..fetch import TocEntry, fetch_law_xml, fetch_toc
 from ..http import build_session
 from ..parse import parse_law_xml
 from ..render import build_meta_json, build_toc_json, render_section_markdown
@@ -56,18 +56,8 @@ def _process_one(
     unchanged = prev.get("source_xml_sha256") == sha and not force_rerender
     bjnr = asset.bjnr
 
-    now_iso = (
-        datetime.now(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
-    fetched_at = prev.get("fetched_at") if unchanged else now_iso
-    if not fetched_at:
-        fetched_at = now_iso
     index_entry = {
         "bjnr": bjnr,
-        "fetched_at": fetched_at,
         "source_xml_sha256": sha,
         "title": entry.title,
         "zip_url": entry.link,
@@ -116,7 +106,7 @@ def _process_one(
         (target_dir / f"{fname}.md").write_bytes(text.encode("utf-8"))
         file_paths.append(rel)
 
-    keep_sections = [(s, f) for s, f in zip(law.sections, file_paths) if f]
+    keep_sections = [(s, f) for s, f in zip(law.sections, file_paths, strict=False) if f]
     law.sections = [s for s, _ in keep_sections]
     files_only = [f for _, f in keep_sections]
 
@@ -215,7 +205,7 @@ def snapshot(
         "laws": {k: merged[k] for k in sorted(merged.keys())},
         "schema_version": SCHEMA_VERSION,
         "toc_source_url": "https://www.gesetze-im-internet.de/gii-toc.xml",
-        "updated_at": datetime.now(timezone.utc)
+        "updated_at": datetime.now(UTC)
         .replace(microsecond=0)
         .isoformat()
         .replace("+00:00", "Z"),

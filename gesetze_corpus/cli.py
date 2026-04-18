@@ -11,8 +11,10 @@ from pathlib import Path
 from . import SCHEMA_VERSION
 from .canonical import canonicalize_json_dump, canonicalize_xml_bytes
 from .events import commit_event_groups, detect_event_groups
-from .ingest.snapshot import snapshot, iter_laws
-from .util.paths import resolve_data_repo, ensure_dir
+from .ingest.export import export_all
+from .ingest.rerender import rerender_all
+from .ingest.snapshot import iter_laws, snapshot
+from .util.paths import ensure_dir, resolve_data_repo
 
 _LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
@@ -237,6 +239,32 @@ def cmd_sync(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_rerender(args: argparse.Namespace) -> int:
+    data_repo = resolve_data_repo(args.data_repo)
+    report = rerender_all(data_repo, workers=args.workers)
+    print(
+        f"rerender: total={report.total} rewritten={report.rewritten} "
+        f"skipped={report.skipped} failed={report.failed}"
+    )
+    if report.failures:
+        for bjnr, err in report.failures[:20]:
+            print(f"  FAIL {bjnr}: {err}", file=sys.stderr)
+    return 0 if report.failed == 0 else 1
+
+
+def cmd_export(args: argparse.Namespace) -> int:
+    data_repo = resolve_data_repo(args.data_repo)
+    corpus_path = Path(args.out) if args.out else None
+    report = export_all(data_repo, corpus_path=corpus_path)
+    print(
+        f"export: laws={report.laws} sections={report.sections}\n"
+        f"  by-jurabk: {report.by_jurabk_path}\n"
+        f"  by-bjnr:   {report.by_bjnr_path}\n"
+        f"  corpus:    {report.corpus_path}"
+    )
+    return 0
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     data_repo = resolve_data_repo(args.data_repo)
     issues = 0
@@ -323,6 +351,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="commit message when --force-rerender is set",
     )
     p_sync.set_defaults(func=cmd_sync)
+
+    p_rerender = sub.add_parser(
+        "rerender",
+        help="re-parse all locally cached source.xml files (no network)",
+    )
+    p_rerender.add_argument("--workers", type=int, default=8)
+    p_rerender.set_defaults(func=cmd_rerender)
+
+    p_export = sub.add_parser(
+        "export",
+        help="build derived artefacts (by-jurabk, by-bjnr, corpus.jsonl)",
+    )
+    p_export.add_argument(
+        "--out",
+        default=None,
+        help="path for corpus.jsonl (default: <data-repo>/derived/corpus.jsonl)",
+    )
+    p_export.set_defaults(func=cmd_export)
 
     return parser
 

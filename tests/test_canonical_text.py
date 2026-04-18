@@ -1,6 +1,6 @@
 from gesetze_corpus.canonical import (
-    canonicalize_text,
     canonicalize_json_dump,
+    canonicalize_text,
 )
 
 

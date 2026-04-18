@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from ..canonical import canonicalize_text
-from ..parse import ParsedSection
+from ..parse import ParsedAbsatz, ParsedSection
 
 _FRONTMATTER_ORDER = [
     "schema_version",
@@ -48,6 +48,28 @@ def _render_frontmatter(data: dict) -> str:
     return "\n".join(lines)
 
 
+def _format_absatz(a: ParsedAbsatz) -> str:
+    """Render one Absatz as a single Markdown line.
+
+    Numbered Saetze get a ``<sup>N</sup>`` marker so the Satz granularity
+    stays visible to readers without cluttering grep output. A single
+    unnumbered Satz (nummer == 1 and no intro) is emitted flat.
+    """
+    prefix = f"({a.absatz}) "
+    if not a.saetze:
+        return prefix + a.intro if a.intro else prefix.rstrip()
+
+    if len(a.saetze) == 1 and not a.intro:
+        return prefix + a.saetze[0].text
+
+    parts: list[str] = []
+    if a.intro:
+        parts.append(a.intro)
+    for s in a.saetze:
+        parts.append(f"<sup>{s.nummer}</sup>{s.text}")
+    return prefix + " ".join(parts)
+
+
 def render_section_markdown(
     *,
     schema_version: str,
@@ -76,7 +98,7 @@ def render_section_markdown(
     body_parts = [_render_frontmatter(frontmatter), "", header_line, ""]
     if section.absaetze:
         for a in section.absaetze:
-            body_parts.append(f"({a.absatz}) {a.text}")
+            body_parts.append(_format_absatz(a))
             body_parts.append("")
     else:
         body_parts.append("")

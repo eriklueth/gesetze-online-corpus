@@ -14,6 +14,12 @@ concurrency:
   group: daily-snapshot
   cancel-in-progress: false
 
+# NOTE: gesetze-im-internet.de appears to GeoIP-filter non-DE cloud IPs,
+# so the hosted ubuntu-latest runner cannot reach it. This workflow is
+# kept as a reference and will work once a self-hosted runner in DE is
+# available - change "runs-on" to [self-hosted, linux, de] (or similar)
+# and the rest will work as-is. For now, prefer the local PowerShell
+# driver at scripts/sync-local.ps1 + Windows Task Scheduler.
 jobs:
   snapshot:
     runs-on: ubuntu-latest

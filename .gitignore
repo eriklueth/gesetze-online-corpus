@@ -13,3 +13,9 @@ dist/
 
 # runtime state (tooling side)
 data/state/
+
+# rotating logs from sync-local.ps1
+logs/
+
+# scratch files
+.COMMIT_MSG.tmp

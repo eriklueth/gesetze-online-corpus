@@ -52,15 +52,28 @@ Standardpfad zum Daten-Repo: `../gesetze-corpus-data`. Überschreibbar per `--da
 
 ## CLI
 
+Die produktiven Befehle leben unter dem `bund`-Subkommando (Scope-Klarheit ab dem Moment, in dem VwV / Rechtsprechung / Landesrecht / EU als weitere Quellen dazukommen):
+
 | Befehl | Zweck |
 |---|---|
-| `gesetze-corpus init-data` | Daten-Repo scaffolden + `git init` |
-| `gesetze-corpus snapshot` | gesamtes GII-TOC verarbeiten |
-| `gesetze-corpus snapshot --limit N` | erste N Gesetze |
-| `gesetze-corpus snapshot --slug bgb` | einzelnes Gesetz |
-| `gesetze-corpus commit-events` | backdated Commits pro `stand_datum` |
-| `gesetze-corpus sync` | `snapshot` + `commit-events` (Daily Driver) |
-| `gesetze-corpus verify` | Idempotenz + Hashes prüfen |
+| `gesetze-corpus bund init-data` | Daten-Repo scaffolden + `git init` |
+| `gesetze-corpus bund snapshot` | gesamtes GII-TOC verarbeiten |
+| `gesetze-corpus bund snapshot --limit N` | erste N Gesetze |
+| `gesetze-corpus bund snapshot --slug bgb` | einzelnes Gesetz |
+| `gesetze-corpus bund commit-events` | backdated Commits pro `stand_datum` |
+| `gesetze-corpus bund sync` | `snapshot` + `commit-events` (Daily Driver) |
+| `gesetze-corpus bund verify` | Idempotenz + Hashes prüfen |
+
+Die alten flachen Befehle (`gesetze-corpus sync`, `snapshot`, `commit-events`, …) funktionieren weiter als Aliase auf `bund <...>` und bleiben kompatibel mit bestehenden Scheduled Tasks.
+
+Weitere Quellen (alle Phase-Scaffolds, siehe [`docs/ROADMAP.md`](docs/ROADMAP.md)):
+
+| Befehl | Status |
+|---|---|
+| `gesetze-corpus vwv status` · `list` · `sync` | Scaffold, Phase 1 |
+| `gesetze-corpus rechtsprechung status` · `list` · `sync` | Scaffold, Phase 2 |
+| `gesetze-corpus land list` · `land <iso> status` · `land <iso> sync` | Scaffold, Phase 8 |
+| `gesetze-corpus eu status` · `probe <celex>` · `sync` | Scaffold, Phase 9 |
 
 `python -m gesetze_corpus …` funktioniert identisch, falls das Console-Script nicht im `PATH` ist.
 
@@ -68,7 +81,14 @@ Standardpfad zum Daten-Repo: `../gesetze-corpus-data`. Überschreibbar per `--da
 
 ```
 gesetze_corpus/
-    cli.py             # Entry Points (snapshot, sync, commit-events, verify)
+    cli.py             # Entry Point; dispatched zu <source> <subcommand>
+    fetchers/          # Per-Source-Facade
+        bund.py        # Produktiv: GII-Pipeline (delegiert an ingest/)
+        vwv/           # Scaffold: verwaltungsvorschriften-im-internet.de
+        rechtsprechung/ # Scaffold: Bundesgerichte (rechtsprechung-im-internet.de)
+        eu/            # Scaffold: EUR-Lex (CELEX + ELI)
+        land/          # Scaffold: 16 Bundeslaender (_template.py + per-ISO Adapter)
+    sources/           # Zusatzquellen (NeuRIS-Client fuer ELI-Anreicherung)
     fetch/             # GII TOC + ZIP Downloads, HTTP mit Retry
     parse/             # XML → strukturierte Zwischenform
     canonical/         # Text- + XML-Canonicalization (c14n2, NFC, LF)
@@ -76,7 +96,7 @@ gesetze_corpus/
     ingest/            # Orchestrator pro Gesetz
     events/            # stand_datum-Gruppierung, Event-Writer
     util/              # Slugs, Pfade
-docs/                  # Architektur, Schema, Canonicalization-Regeln
+docs/                  # Architektur, Schema, Canonicalization, Roadmap
 scripts/sync-local.ps1 # Windows-Scheduled-Task Wrapper
 tests/                 # Parser-, Canonicalizer-, Idempotenz-Tests
 ```
@@ -120,11 +140,18 @@ Idempotenz ist Test-Invariante: zwei aufeinanderfolgende `snapshot`-Läufe ohne 
 
 ## Roadmap
 
-- [x] Phase A — Schema-Freeze (v1 + v2)
-- [x] Phase B — Current Snapshot (6876 Gesetze)
-- [x] Phase C v1 — Event-Commits per `stand_datum`
-- [ ] Phase C v2 — echte Events via recht.bund.de + ELI
-- [ ] Phase D — Backfill 2006 → heute
+Kurzueberblick, Details in [`docs/ROADMAP.md`](docs/ROADMAP.md):
+
+- [x] Bund produktiv (`gesetze-corpus bund sync`)
+- [x] Phase 1a: VwV-Corpus (`gesetze-corpus vwv sync`)
+- [ ] Phase 1b: recht.bund.de-Events + ELI (Scaffold; Endpunkte vor Aktivierung verifizieren)
+- [x] Phase 2: Rechtsprechung (Bundesgerichte, `rechtsprechung-corpus-data`)
+- [x] Phase 3–7: Produkt-MVP, Webhooks, Semantic Search, Widerspruchs-Detection, Billing — lebt im Schwesterrepo [`gesetze-online-app`](https://github.com/eriklueth/gesetze-online-app)
+- [ ] Phase 8: Landesrecht (BY, NW, BW zuerst, dann Rest) — Scaffold
+- [x] Phase 9: EU-Recht via EUR-Lex (`gesetze-corpus eu sync` + `eu backfill`)
+- [x] Phase 10: Rechtsprechung zu Norm verlinken (`workers/decision_linker.mjs` im App-Repo)
+
+Zielbild ("Deutsche-Recht-Plattform"): geteilte Pipeline + ~21 CC0-Daten-Repos + proprietaerer Next.js-Stack mit REST, MCP, Webhooks und agentischer Widerspruchs-Detection. Architektur-Skizze: [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Lizenz
 

@@ -1,0 +1,83 @@
+name: scheduled-vwv
+
+# Daily VwV (Verwaltungsvorschriften) sync. Upstream:
+# verwaltungsvorschriften-im-internet.de. Like the federal-law portal,
+# this might GeoIP-block non-DE runners; if so, gate on a self-hosted
+# DE runner.
+#
+# Required:
+#   vars.VWV_DATA_REPO_SLUG       -- e.g. "owner/vwv-corpus-data"
+#   secrets.VWV_DATA_REPO_TOKEN   -- contents:write PAT
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Max number of VwV entries to process (0 = all)"
+        required: false
+        default: "0"
+  # schedule:
+  #   - cron: "0 3 * * *"   # 03:00 UTC every day
+
+concurrency:
+  group: scheduled-vwv
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      DATA_REPO_DIR: ${{ github.workspace }}/data-repo
+    steps:
+      - name: checkout tools
+        uses: actions/checkout@v4
+        with:
+          path: tools
+
+      - name: checkout data repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.VWV_DATA_REPO_SLUG }}
+          token: ${{ secrets.VWV_DATA_REPO_TOKEN }}
+          path: data-repo
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: install
+        working-directory: tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: configure git identity
+        working-directory: data-repo
+        run: |
+          git config user.name  "vwv-bot"
+          git config user.email "bot@gesetze.online"
+
+      - name: sync (with backdated commits)
+        working-directory: tools
+        env:
+          GESETZE_VWV_REPO: ${{ env.DATA_REPO_DIR }}
+        run: |
+          LIMIT="${{ github.event.inputs.limit }}"
+          if [ -z "$LIMIT" ] || [ "$LIMIT" = "0" ]; then
+            python -m gesetze_corpus vwv sync --commit
+          else
+            python -m gesetze_corpus vwv sync --commit --limit "$LIMIT"
+          fi
+
+      - name: push
+        working-directory: data-repo
+        run: |
+          if git log origin/main..HEAD --oneline 2>/dev/null | read -r; then
+            git push
+          else
+            echo "no new commits to push"
+          fi

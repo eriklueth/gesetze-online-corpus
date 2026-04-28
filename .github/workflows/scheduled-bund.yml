@@ -1,0 +1,87 @@
+name: scheduled-bund
+
+# Daily federal-law sync. Uses gesetze-im-internet.de which GeoIP-blocks
+# non-DE cloud runners; until we have a self-hosted DE runner the cron
+# is `workflow_dispatch` only and the local Task-Scheduler on the dev
+# machine drives the daily run (scripts/sync-local.ps1).
+#
+# To enable in CI:
+#   1) set up a self-hosted runner labelled `[self-hosted, linux, de]`
+#   2) change `runs-on` below
+#   3) uncomment the `schedule` block
+#
+# Required secrets / vars (in repo settings):
+#   vars.BUND_DATA_REPO_SLUG  -- e.g. "owner/gesetze-corpus-data"
+#   secrets.BUND_DATA_REPO_TOKEN -- PAT or fine-grained token with `contents:write`
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Max number of laws to process (0 = all)"
+        required: false
+        default: "0"
+  # schedule:
+  #   - cron: "30 2 * * *"   # 02:30 UTC every day
+
+concurrency:
+  group: scheduled-bund
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      DATA_REPO_DIR: ${{ github.workspace }}/data-repo
+    steps:
+      - name: checkout tools
+        uses: actions/checkout@v4
+        with:
+          path: tools
+
+      - name: checkout data repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.BUND_DATA_REPO_SLUG }}
+          token: ${{ secrets.BUND_DATA_REPO_TOKEN }}
+          path: data-repo
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: install
+        working-directory: tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: sync
+        working-directory: tools
+        env:
+          GESETZE_DATA_REPO: ${{ env.DATA_REPO_DIR }}
+        run: |
+          LIMIT="${{ github.event.inputs.limit }}"
+          if [ -z "$LIMIT" ] || [ "$LIMIT" = "0" ]; then
+            python -m gesetze_corpus sync --workers 4
+          else
+            python -m gesetze_corpus sync --workers 4 --limit "$LIMIT"
+          fi
+
+      - name: verify
+        working-directory: tools
+        env:
+          GESETZE_DATA_REPO: ${{ env.DATA_REPO_DIR }}
+        run: python -m gesetze_corpus verify
+
+      - name: push
+        working-directory: data-repo
+        run: |
+          if git log origin/main..HEAD --oneline 2>/dev/null | read -r; then
+            git push
+          else
+            echo "no new commits to push"
+          fi

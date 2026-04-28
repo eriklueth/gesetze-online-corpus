@@ -1,0 +1,106 @@
+name: scheduled-eu
+
+# Daily EU/EUR-Lex sync. Source: Cellar SPARQL + EUR-Lex
+# content-negotiation. EU portal is reachable from generic GitHub
+# runners.
+#
+# Two modes:
+#   - delta sync (default, scheduled nightly): grabs everything new
+#     since the recorded cursor.
+#   - backfill (manual workflow_dispatch with `mode=backfill`):
+#     walks `--from .. --to` in `--window-days` windows; resumable
+#     via the on-repo cursor file.
+#
+# Required:
+#   vars.EU_DATA_REPO_SLUG     -- e.g. "owner/eu-recht-corpus-data"
+#   secrets.EU_DATA_REPO_TOKEN -- contents:write PAT
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "sync (delta) or backfill (windowed)"
+        required: false
+        default: "sync"
+      backfill_from:
+        description: "Backfill start date (YYYY-MM-DD; only mode=backfill)"
+        required: false
+        default: "2018-01-01"
+      backfill_to:
+        description: "Backfill end date (YYYY-MM-DD; only mode=backfill, blank = today)"
+        required: false
+        default: ""
+      window_days:
+        description: "Backfill window size in days"
+        required: false
+        default: "30"
+  schedule:
+    - cron: "15 4 * * *" # 04:15 UTC every day (delta sync)
+
+concurrency:
+  group: scheduled-eu
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      DATA_REPO_DIR: ${{ github.workspace }}/data-repo
+    steps:
+      - name: checkout tools
+        uses: actions/checkout@v4
+        with:
+          path: tools
+
+      - name: checkout data repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.EU_DATA_REPO_SLUG }}
+          token: ${{ secrets.EU_DATA_REPO_TOKEN }}
+          path: data-repo
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: install
+        working-directory: tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: configure git identity
+        working-directory: data-repo
+        run: |
+          git config user.name  "eu-bot"
+          git config user.email "bot@gesetze.online"
+
+      - name: sync
+        working-directory: tools
+        env:
+          GESETZE_EU_REPO: ${{ env.DATA_REPO_DIR }}
+        run: |
+          MODE="${{ github.event.inputs.mode }}"
+          if [ -z "$MODE" ]; then MODE="sync"; fi
+          if [ "$MODE" = "backfill" ]; then
+            ARGS=(--commit --from "${{ github.event.inputs.backfill_from }}" \
+                  --window-days "${{ github.event.inputs.window_days }}")
+            TO="${{ github.event.inputs.backfill_to }}"
+            if [ -n "$TO" ]; then ARGS+=(--to "$TO"); fi
+            python -m gesetze_corpus eu backfill "${ARGS[@]}"
+          else
+            python -m gesetze_corpus eu sync --commit
+          fi
+
+      - name: push
+        working-directory: data-repo
+        run: |
+          if git log origin/main..HEAD --oneline 2>/dev/null | read -r; then
+            git push
+          else
+            echo "no new commits to push"
+          fi

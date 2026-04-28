@@ -1,0 +1,82 @@
+name: scheduled-rechtsprechung
+
+# Daily court-decisions sync. Upstream: rechtsprechung-im-internet.de
+# (and the rii portal). GeoIP behaviour identical to the federal-law
+# pipeline: enable on a DE-located runner.
+#
+# Required:
+#   vars.RECHTSPRECHUNG_DATA_REPO_SLUG     -- e.g. "owner/rechtsprechung-corpus-data"
+#   secrets.RECHTSPRECHUNG_DATA_REPO_TOKEN -- contents:write PAT
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Max number of decisions to process (0 = all)"
+        required: false
+        default: "0"
+  # schedule:
+  #   - cron: "30 3 * * *"   # 03:30 UTC every day
+
+concurrency:
+  group: scheduled-rechtsprechung
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      DATA_REPO_DIR: ${{ github.workspace }}/data-repo
+    steps:
+      - name: checkout tools
+        uses: actions/checkout@v4
+        with:
+          path: tools
+
+      - name: checkout data repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.RECHTSPRECHUNG_DATA_REPO_SLUG }}
+          token: ${{ secrets.RECHTSPRECHUNG_DATA_REPO_TOKEN }}
+          path: data-repo
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: install
+        working-directory: tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: configure git identity
+        working-directory: data-repo
+        run: |
+          git config user.name  "rii-bot"
+          git config user.email "bot@gesetze.online"
+
+      - name: sync (with backdated commits)
+        working-directory: tools
+        env:
+          GESETZE_RECHTSPRECHUNG_REPO: ${{ env.DATA_REPO_DIR }}
+        run: |
+          LIMIT="${{ github.event.inputs.limit }}"
+          if [ -z "$LIMIT" ] || [ "$LIMIT" = "0" ]; then
+            python -m gesetze_corpus rechtsprechung sync --commit
+          else
+            python -m gesetze_corpus rechtsprechung sync --commit --limit "$LIMIT"
+          fi
+
+      - name: push
+        working-directory: data-repo
+        run: |
+          if git log origin/main..HEAD --oneline 2>/dev/null | read -r; then
+            git push
+          else
+            echo "no new commits to push"
+          fi

@@ -28,3 +28,25 @@ def build_session() -> requests.Session:
     session.mount("http://", adapter)
     session.headers.update({"User-Agent": USER_AGENT})
     return session
+
+
+_default_session: requests.Session | None = None
+
+
+def _shared_session() -> requests.Session:
+    global _default_session
+    if _default_session is None:
+        _default_session = build_session()
+    return _default_session
+
+
+def get(url: str, *, timeout: float = 30.0, **kwargs) -> requests.Response:
+    """Convenience GET that uses the shared session and raises on >=400.
+
+    Used by fetcher submodules that don't need a long-lived session
+    object (e.g. listing probes, single-shot crawls). The shared
+    session keeps the retry/backoff config consistent across modules.
+    """
+    response = _shared_session().get(url, timeout=timeout, **kwargs)
+    response.raise_for_status()
+    return response

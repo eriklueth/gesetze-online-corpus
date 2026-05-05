@@ -57,14 +57,17 @@ Die produktiven Befehle leben unter dem `bund`-Subkommando (Scope-Klarheit ab de
 | Befehl | Zweck |
 |---|---|
 | `gesetze-corpus bund init-data` | Daten-Repo scaffolden + `git init` |
-| `gesetze-corpus bund snapshot` | gesamtes GII-TOC verarbeiten |
-| `gesetze-corpus bund snapshot --limit N` | erste N Gesetze |
-| `gesetze-corpus bund snapshot --slug bgb` | einzelnes Gesetz |
+| `gesetze-corpus bund snapshot` | GII-TOC verarbeiten; bestehende lokale Gesetze werden übersprungen, neue Slugs geladen |
+| `gesetze-corpus bund snapshot --limit N` | erste N TOC-Einträge prüfen |
+| `gesetze-corpus bund snapshot --slug bgb` | einzelnes Gesetz prüfen/laden |
+| `gesetze-corpus bund snapshot --check-existing` | bestehende Gesetze per HEAD prüfen; nur bei geänderten ETag/Last-Modified neu laden |
 | `gesetze-corpus bund commit-events` | backdated Commits pro `stand_datum` |
 | `gesetze-corpus bund sync` | `snapshot` + `commit-events` (Daily Driver) |
 | `gesetze-corpus bund verify` | Idempotenz + Hashes prüfen |
 
 Die alten flachen Befehle (`gesetze-corpus sync`, `snapshot`, `commit-events`, …) funktionieren weiter als Aliase auf `bund <...>` und bleiben kompatibel mit bestehenden Scheduled Tasks.
+
+GII ist empfindlich gegenüber breiten Crawls. Die Bund-Pipeline läuft deshalb standardmäßig mit `--workers 1`, serialisiert Requests, wartet zwischen GII-Requests (`GESETZE_GII_REQUEST_DELAY`, Default `0.75`, plus `GESETZE_GII_REQUEST_JITTER`, Default `0.5`) und lädt im normalen Daily-Delta nur neue TOC-Slugs. Für eine bewusst breitere Bestandsprüfung `--check-existing` verwenden; für einen vollständigen Neuabruf/Re-Render `--force-rerender`.
 
 Weitere Quellen (alle Phase-Scaffolds, siehe [`docs/ROADMAP.md`](docs/ROADMAP.md)):
 

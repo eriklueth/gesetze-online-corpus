@@ -59,8 +59,13 @@ def _add_legacy_aliases(subparsers) -> None:
     p_snap = subparsers.add_parser("snapshot", help="alias of: bund snapshot")
     p_snap.add_argument("--limit", type=int, default=None)
     p_snap.add_argument("--slug", default=None)
-    p_snap.add_argument("--workers", type=int, default=4)
+    p_snap.add_argument("--workers", type=int, default=1)
     p_snap.add_argument("--force-rerender", action="store_true")
+    p_snap.add_argument(
+        "--check-existing",
+        action="store_true",
+        help="HEAD-check existing laws; default only downloads new TOC slugs",
+    )
     p_snap.set_defaults(func=bund.cmd_snapshot)
 
     p_verify = subparsers.add_parser("verify", help="alias of: bund verify")
@@ -76,11 +81,16 @@ def _add_legacy_aliases(subparsers) -> None:
     p_sync = subparsers.add_parser("sync", help="alias of: bund sync")
     p_sync.add_argument("--limit", type=int, default=None)
     p_sync.add_argument("--slug", default=None)
-    p_sync.add_argument("--workers", type=int, default=4)
+    p_sync.add_argument("--workers", type=int, default=1)
     p_sync.add_argument("--author-name", default="gesetze-corpus-bot")
     p_sync.add_argument("--author-email", default="bot@gesetze-corpus.local")
     p_sync.add_argument("--ignore-errors", action="store_true")
     p_sync.add_argument("--force-rerender", action="store_true")
+    p_sync.add_argument(
+        "--check-existing",
+        action="store_true",
+        help="HEAD-check existing laws; default only downloads new TOC slugs",
+    )
     p_sync.add_argument("--rerender-message", default=None)
     p_sync.set_defaults(func=bund.cmd_sync)
 

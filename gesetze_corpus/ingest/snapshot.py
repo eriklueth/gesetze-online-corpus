@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .. import SCHEMA_VERSION
 from ..canonical import canonicalize_json_dump, canonicalize_xml_bytes
-from ..fetch import TocEntry, fetch_law_xml, fetch_toc
+from ..fetch import TocEntry, fetch_law_head, fetch_law_xml, fetch_toc
 from ..http import build_session
 from ..parse import parse_law_xml
 from ..render import build_meta_json, build_toc_json, render_section_markdown
@@ -42,23 +42,50 @@ def _process_one(
     data_repo: Path,
     previous_index: dict,
     force_rerender: bool = False,
+    check_existing: bool = False,
 ) -> tuple[str, dict, bool, bool]:
     """Fetch, canonicalize, parse and render one law.
 
     Returns (slug, index_entry, fetched_new, wrote_files).
     """
+    prev = previous_index.get(entry.slug) or {}
+    prev_head = prev.get("source_http") or {}
+    known_bjnr = prev.get("bjnr")
+    known_source_exists = bool(
+        known_bjnr and (data_repo / "laws" / known_bjnr / "source.xml").exists()
+    )
+
+    if not force_rerender and known_source_exists and not check_existing:
+        index_entry = dict(prev)
+        index_entry.update({"title": entry.title, "zip_url": entry.link})
+        return entry.slug, index_entry, False, False
+
     session = build_session()
+    head = fetch_law_head(session, entry.link)
+    head_index = head.as_index()
+
+    if not force_rerender and known_source_exists and head_index and prev_head == head_index:
+        index_entry = dict(prev)
+        index_entry.update(
+            {
+                "title": entry.title,
+                "zip_url": entry.link,
+                "source_http": head_index,
+            }
+        )
+        return entry.slug, index_entry, False, False
+
     asset = fetch_law_xml(session, entry.link)
     canonical_xml = canonicalize_xml_bytes(asset.xml_bytes)
     sha = hashlib.sha256(canonical_xml).hexdigest()
 
-    prev = previous_index.get(entry.slug) or {}
     unchanged = prev.get("source_xml_sha256") == sha and not force_rerender
     bjnr = asset.bjnr
 
     index_entry = {
         "bjnr": bjnr,
         "source_xml_sha256": sha,
+        "source_http": head_index,
         "title": entry.title,
         "zip_url": entry.link,
     }
@@ -146,8 +173,9 @@ def snapshot(
     *,
     limit: int | None = None,
     only_slug: str | None = None,
-    workers: int = 4,
+    workers: int = 1,
     force_rerender: bool = False,
+    check_existing: bool = False,
 ) -> SnapshotReport:
     session = build_session()
     entries = fetch_toc(session)
@@ -173,7 +201,11 @@ def snapshot(
     def work(entry: TocEntry) -> tuple[str, dict, bool, bool] | None:
         try:
             return _process_one(
-                entry, data_repo, previous, force_rerender=force_rerender
+                entry,
+                data_repo,
+                previous,
+                force_rerender=force_rerender,
+                check_existing=check_existing,
             )
         except Exception as exc:
             log.warning("failed %s: %s", entry.slug, exc)

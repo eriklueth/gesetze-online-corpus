@@ -15,6 +15,34 @@ class LawAsset:
     zip_bytes: bytes
 
 
+@dataclass
+class LawAssetHead:
+    etag: str | None
+    last_modified: str | None
+    content_length: str | None
+
+    def as_index(self) -> dict[str, str]:
+        return {
+            k: v
+            for k, v in {
+                "etag": self.etag,
+                "last_modified": self.last_modified,
+                "content_length": self.content_length,
+            }.items()
+            if v
+        }
+
+
+def fetch_law_head(session: requests.Session, zip_url: str) -> LawAssetHead:
+    response = session.head(zip_url, timeout=(15, 60), allow_redirects=True)
+    response.raise_for_status()
+    return LawAssetHead(
+        etag=response.headers.get("ETag"),
+        last_modified=response.headers.get("Last-Modified"),
+        content_length=response.headers.get("Content-Length"),
+    )
+
+
 def fetch_law_xml(session: requests.Session, zip_url: str) -> LawAsset:
     response = session.get(zip_url, timeout=(15, 180))
     response.raise_for_status()

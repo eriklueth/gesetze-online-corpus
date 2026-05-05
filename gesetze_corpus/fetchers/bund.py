@@ -123,6 +123,7 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
         only_slug=args.slug,
         workers=args.workers,
         force_rerender=args.force_rerender,
+        check_existing=args.check_existing,
     )
     print(
         f"snapshot: total={report.total} fetched={report.fetched} "
@@ -184,6 +185,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
         only_slug=args.slug,
         workers=args.workers,
         force_rerender=args.force_rerender,
+        check_existing=args.check_existing,
     )
     print(
         f"snapshot: total={report.total} fetched={report.fetched} "
@@ -281,8 +283,13 @@ def register(subparsers) -> None:
     p_snap = sub.add_parser("snapshot", help="fetch + canonicalize + render")
     p_snap.add_argument("--limit", type=int, default=None)
     p_snap.add_argument("--slug", default=None)
-    p_snap.add_argument("--workers", type=int, default=4)
+    p_snap.add_argument("--workers", type=int, default=1)
     p_snap.add_argument("--force-rerender", action="store_true")
+    p_snap.add_argument(
+        "--check-existing",
+        action="store_true",
+        help="HEAD-check existing laws; default only downloads new TOC slugs",
+    )
     p_snap.set_defaults(func=cmd_snapshot)
 
     p_verify = sub.add_parser("verify", help="check canonical form and hashes")
@@ -303,11 +310,16 @@ def register(subparsers) -> None:
     )
     p_sync.add_argument("--limit", type=int, default=None)
     p_sync.add_argument("--slug", default=None)
-    p_sync.add_argument("--workers", type=int, default=4)
+    p_sync.add_argument("--workers", type=int, default=1)
     p_sync.add_argument("--author-name", default="gesetze-corpus-bot")
     p_sync.add_argument("--author-email", default="bot@gesetze-corpus.local")
     p_sync.add_argument("--ignore-errors", action="store_true")
     p_sync.add_argument("--force-rerender", action="store_true")
+    p_sync.add_argument(
+        "--check-existing",
+        action="store_true",
+        help="HEAD-check existing laws; default only downloads new TOC slugs",
+    )
     p_sync.add_argument("--rerender-message", default=None)
     p_sync.set_defaults(func=cmd_sync)
 

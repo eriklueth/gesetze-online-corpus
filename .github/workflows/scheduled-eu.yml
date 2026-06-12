@@ -14,6 +14,11 @@ name: scheduled-eu
 # Required:
 #   vars.EU_DATA_REPO_SLUG     -- e.g. "owner/eu-recht-corpus-data"
 #   secrets.EU_DATA_REPO_TOKEN -- contents:write PAT
+#
+# Fallback:
+#   vars.DATA_REPO_SLUG / secrets.DATA_REPO_TOKEN are accepted for the
+#   current single-data-repo setup. If only the public repo slug is needed,
+#   github.token keeps checkout from receiving an empty token.
 
 on:
   workflow_dispatch:
@@ -57,8 +62,8 @@ jobs:
       - name: checkout data repo
         uses: actions/checkout@v4
         with:
-          repository: ${{ vars.EU_DATA_REPO_SLUG }}
-          token: ${{ secrets.EU_DATA_REPO_TOKEN }}
+          repository: ${{ vars.EU_DATA_REPO_SLUG || vars.DATA_REPO_SLUG || 'eriklueth/gesetze-corpus-data' }}
+          token: ${{ secrets.EU_DATA_REPO_TOKEN || secrets.DATA_REPO_TOKEN || github.token }}
           path: data-repo
           fetch-depth: 0
 

@@ -21,6 +21,8 @@ name: scheduled-eu
 #   github.token keeps checkout from receiving an empty token.
 
 on:
+  # Automatic EU syncs are paused. Keep workflow_dispatch so the workflow can
+  # still be run manually and restore the former daily cron when work resumes.
   workflow_dispatch:
     inputs:
       mode:
@@ -39,9 +41,6 @@ on:
         description: "Backfill window size in days"
         required: false
         default: "30"
-  schedule:
-    - cron: "15 4 * * *" # 04:15 UTC every day (delta sync)
-
 concurrency:
   group: scheduled-eu
   cancel-in-progress: false
